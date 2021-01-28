@@ -1388,7 +1388,7 @@ void ParseArgs(int argc, char *argv[])
 					ret = NvApiSetCoreClockOffset(gpuBusId, pState, frequencyKHz);
 					if (ret < 0)
 					{
-						printf("NvApi Run fail\n");
+						printf("NvApi Run fail:%d\n", ret);
 					}
 					else
 					{
@@ -1416,7 +1416,8 @@ void ParseArgs(int argc, char *argv[])
 						ret = NvApiSetMemoryClockOffset(gpuBusId, pState, frequencyKHz);
 						if (ret < 0)
 						{
-							printf("NvApi Run fail\n");
+							printf("NvApi Run fail:%d\n", ret);
+
 						}
 						else
 						{
@@ -1465,13 +1466,16 @@ void ParseArgs(int argc, char *argv[])
 			{
 				unsigned int gpuBusId = atoi(argv[++arg]);
 				int power = atoi(argv[++arg]);
-
+				if ((NvApiGpuHandles[gpuBusId] == 0) && (busId != gpuBusId))
+				{
+					printf("NV gpuBusId not find\n");
+				}
 				if (NvApiGpuHandles[gpuBusId] != 0)
 				{
 					ret = NvApiSetPowerLimit(gpuBusId, power);
 					if (ret < 0)
 					{
-						printf("NvApi Run fail\n");
+						printf("NvApi Run fail:%d\n", ret);
 					}
 					else
 					{
@@ -1492,13 +1496,16 @@ void ParseArgs(int argc, char *argv[])
 				unsigned int gpuBusId = atoi(argv[++arg]);
 				unsigned int priority = atoi(argv[++arg]);
 				unsigned int tempC = atoi(argv[++arg]);
-
+				if ((NvApiGpuHandles[gpuBusId] == 0) && (busId != gpuBusId))
+				{
+					printf("NV gpuBusId not find\n");
+				}
 				if (NvApiGpuHandles[gpuBusId] != 0)
 				{
 					ret=NvApiSetTempLimit(gpuBusId, (priority != 0), tempC);
 					if (ret < 0)
 					{
-						printf("NvApi Run fail\n");
+						printf("NvApi Run fail:%d\n", ret);
 					}
 					else
 					{
@@ -1568,7 +1575,7 @@ void ParseArgs(int argc, char *argv[])
 							ret=NvApiSetCurve(gpuBusId, count, voltageUV, frequencyDeltaKHz);
 							if (ret < 0)
 							{
-								printf("NvApi Run fail\n");
+								printf("NvApi Run fail:%d\n", ret);
 							}
 							else
 							{
@@ -1581,8 +1588,9 @@ void ParseArgs(int argc, char *argv[])
 					printf("CURVE save:\n ");
 
 					if (NvApiGpuHandles[gpuBusId] != 0)
-					{
-						if (NvApiGetCurve(gpuBusId, (unsigned int*) &count, voltageUV, frequencyDeltaKHz) == 0)
+					{	
+						ret = NvApiGetCurve(gpuBusId, (unsigned int*)&count, voltageUV, frequencyDeltaKHz);
+						if ( ret == 0)
 						{
 							FILE *curve = 0;
 							
@@ -1602,7 +1610,7 @@ void ParseArgs(int argc, char *argv[])
 							printf("NvApi Run OK\n");
 						}
 						else
-							printf("NvApi Run fail\n");
+							printf("NvApi Run fail:%d\n", ret);
 					}
 					else
 					{
