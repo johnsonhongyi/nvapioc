@@ -300,7 +300,7 @@ enum class PStateLimitType
 	All = 3
 };
 
-bool NvApi = true, Adl = true;
+bool NvApi = true, Adl = false;
 bool LogFileEnable = true;
 
 void *NvApiGpuHandles[128] = {0};
@@ -415,6 +415,7 @@ int NvApiRestartDriver()
 
 	return result;
 }
+unsigned int busId = 0;
 
 int NvApiEnumGpus()
 {
@@ -431,13 +432,20 @@ int NvApiEnumGpus()
 		{
 			for (unsigned int i = 0; i < count; ++i)
 			{
-				unsigned int busId = 0;
+				//unsigned int busId = 0;
 				int busIdResult = 0;
 
 				LOG(busIdResult = NvAPI_GPU_GetBusId(handles[i], &busId));
-
 				if (busIdResult == 0)
-					NvApiGpuHandles[busId] = handles[i];
+					{
+						printf("init GpuGetBusId\n");
+						NvApiGpuHandles[busId] = handles[i];
+					}
+				//else
+				//	{
+				//		printf("not find Gpu ,GetBusId is wrong\n");
+				//	}
+
 			}
 		}
 	}
@@ -1278,20 +1286,30 @@ void PrintUsage()
 	printf(
 		"\n"
 		"Usage:\n"
-		"-core gpuBusId pState frequencyKHz (frequencykHz: 0 = default; NVIDIA offset)\n"
-		"-mem gpuBusId pState frequencyKHz (frequencyKHz: 0 = default; NVIDIA offset)\n"
+		"-core gpuBusId pState freqMHz (pState: 0 or 2 freqMHz: 0 = default; NVIDIA offset)\n"
+		"-mem gpuBusId pState freqMHz (pState: 0 or 2 freqMHz: 0 = default; NVIDIA offset)\n"
 		"-cvolt gpuBusId pState voltageUV (voltageUV: 0 = default)\n"
 		"-mvolt gpuBusId pState voltageUV (voltageUV: 0 = default)\n"
-		"-power gpuBusId power (power: AMD offset)\n"
-		"-temp gpuBusId priority tempC (priority: 0 = false; 1 = true)\n"
+		"-power gpuBusId power (power:int(power) AMD offset)\n"
+		"-temp gpuBusId priority tempC (int(tempC) priority: 0 = false; 1 = true)\n"
 		"-fan gpuBusId fanIndex speed (speed: -1 = default)\n"
 		"-led gpuBusId type brightness (type: 0 = logo; 1 = sliBridge)\n"
 		"-curve gpuBusId count voltageUV frequencyKHz vUV2 fKHz2 vUV3 fKHz3\n"
-		"(count: 0 = reset; -1 = save; frequencyKHz: 0 = default; NVIDIA offset)\n"
+		"(count: 0 = reset; -1 = save; freqMHz: 0 = default; NVIDIA offset)\n"
 		"-nvidia enable (enable: 0 = false; 1 = true = default)\n"
-		"-amd enable (enable: 0 = false; 1 = true = default)\n"
+		"-amd enable (enable: 0 = false = default ; 1 = true )\n"
 		"-log enable (enable: 0 = false; 1 = true = default)\n"
-		"-restart\n");
+		"-restart\n"
+		"pState is GPU P-State:\n"
+		"For NVIDIA it is usually 0 or 2 under load.You can check in NVIDIA Inspector(check under load).\n"
+		"For AMD I cant tell for sure(probably 7 for core 2 or 3 for memory) cause I dont have any AMD \n"
+		"right now but you can also check using OverdriveNTool(usually highest number under load, not lowest as NVIDIA)\n"
+		"gpuBusId is GPU PCI Bus ID:\n"
+		"You can check Device Manager - Display Adapters - Properties - General - Location - PCI Bus.Ex: 0 or 1\n"
+		"freqMHz is in MHz, so + 150 would be 150000(fixed to 150). For AMD same but absolute value(not relative as NVIDIA).\n"
+		"Ex:-curve save	: nvapioc.exe  -curve 1 -1\n"
+		"Ex:-core reset or oc : nvapioc.exe  -core 1 0 0 or 100\n"
+		"Ex:-mem  reset or oc : nvapioc.exe  -mem 1 0 0 or 100\n" );
 }
 
 void ParseInitArgs(int argc, char *argv[])
@@ -1329,6 +1347,7 @@ void ParseInitArgs(int argc, char *argv[])
 void ParseArgs(int argc, char *argv[])
 {
 	int arg = 1;
+	int ret = -1;
 
 	while (arg < argc)
 	{
@@ -1359,10 +1378,24 @@ void ParseArgs(int argc, char *argv[])
 			{
 				unsigned int gpuBusId = atoi(argv[++arg]);
 				unsigned int pState = atoi(argv[++arg]);
-				int frequencyKHz = atoi(argv[++arg]);
-
+				int frequencyKHz = atoi(argv[++arg])*1000;
+				if (busId != gpuBusId)
+					{
+						printf("NV not find");
+					}
 				if (NvApiGpuHandles[gpuBusId] != 0)
-					NvApiSetCoreClockOffset(gpuBusId, pState, frequencyKHz);
+				{
+					ret = NvApiSetCoreClockOffset(gpuBusId, pState, frequencyKHz);
+					if (ret < 0)
+					{
+						printf("NvApi Run fail\n");
+					}
+					else
+					{
+						printf("NvApi Run OK\n");
+					}
+				}
+
 				else
 					AdlSetCoreClock(gpuBusId, pState, frequencyKHz);
 			}
@@ -1373,12 +1406,29 @@ void ParseArgs(int argc, char *argv[])
 			{
 				unsigned int gpuBusId = atoi(argv[++arg]);
 				unsigned int pState = atoi(argv[++arg]);
-				int frequencyKHz = atoi(argv[++arg]);
-
+				int frequencyKHz = atoi(argv[++arg])*1000;
+				if ((NvApiGpuHandles[gpuBusId] == 0) && (busId != gpuBusId))
+				{
+					printf("NV gpuBusId not find\n");
+				}
 				if (NvApiGpuHandles[gpuBusId] != 0)
-					NvApiSetMemoryClockOffset(gpuBusId, pState, frequencyKHz);
+					{
+						ret = NvApiSetMemoryClockOffset(gpuBusId, pState, frequencyKHz);
+						if (ret < 0)
+						{
+							printf("NvApi Run fail\n");
+						}
+						else
+						{
+							printf("NvApi Run OK\n");
+						}
+					}
+					
 				else
-					AdlSetMemoryClock(gpuBusId, pState, frequencyKHz);
+					{
+						AdlSetMemoryClock(gpuBusId, pState, frequencyKHz);
+					}
+
 			}
 		}
 		else if (strcmp(strupr(argv[arg]), "-CVOLT") == 0)
@@ -1417,13 +1467,26 @@ void ParseArgs(int argc, char *argv[])
 				int power = atoi(argv[++arg]);
 
 				if (NvApiGpuHandles[gpuBusId] != 0)
-					NvApiSetPowerLimit(gpuBusId, power);
+				{
+					ret = NvApiSetPowerLimit(gpuBusId, power);
+					if (ret < 0)
+					{
+						printf("NvApi Run fail\n");
+					}
+					else
+					{
+						printf("NvApi Run OK\n");
+					}
+				}
+
 				else
 					AdlSetPowerLimit(gpuBusId, power);
 			}
 		}
 		else if (strcmp(strupr(argv[arg]), "-TEMP") == 0)
 		{
+			printf("in TEMP\n");
+
 			if (arg + 3 < argc)
 			{
 				unsigned int gpuBusId = atoi(argv[++arg]);
@@ -1431,7 +1494,17 @@ void ParseArgs(int argc, char *argv[])
 				unsigned int tempC = atoi(argv[++arg]);
 
 				if (NvApiGpuHandles[gpuBusId] != 0)
-					NvApiSetTempLimit(gpuBusId, (priority != 0), tempC);
+				{
+					ret=NvApiSetTempLimit(gpuBusId, (priority != 0), tempC);
+					if (ret < 0)
+					{
+						printf("NvApi Run fail\n");
+					}
+					else
+					{
+						printf("NvApi Run OK\n");
+					}
+				}
 				else
 					AdlSetTempLimit(gpuBusId, tempC);
 			}
@@ -1471,6 +1544,8 @@ void ParseArgs(int argc, char *argv[])
 		}
 		else if (strcmp(strupr(argv[arg]), "-CURVE") == 0)
 		{
+			printf("in CURVE\n");
+
 			if (arg + 2 < argc)
 			{
 				unsigned int gpuBusId = atoi(argv[++arg]);
@@ -1490,18 +1565,28 @@ void ParseArgs(int argc, char *argv[])
 						}
 
 						if (NvApiGpuHandles[gpuBusId] != 0)
-							NvApiSetCurve(gpuBusId, count, voltageUV, frequencyDeltaKHz);
+							ret=NvApiSetCurve(gpuBusId, count, voltageUV, frequencyDeltaKHz);
+							if (ret < 0)
+							{
+								printf("NvApi Run fail\n");
+							}
+							else
+							{
+								printf("NvApi Run OK\n");
+							}
 					}
 				}
 				else
 				{
+					printf("CURVE save:\n ");
+
 					if (NvApiGpuHandles[gpuBusId] != 0)
 					{
 						if (NvApiGetCurve(gpuBusId, (unsigned int*) &count, voltageUV, frequencyDeltaKHz) == 0)
 						{
 							FILE *curve = 0;
 							
-							LOG(curve = fopen("curve.bat", "a"));
+							LOG(curve = fopen("curve.bat", "w"));
 
 							if (curve)
 							{
@@ -1514,7 +1599,14 @@ void ParseArgs(int argc, char *argv[])
 
 								LOG(fclose(curve));
 							}
+							printf("NvApi Run OK\n");
 						}
+						else
+							printf("NvApi Run fail\n");
+					}
+					else
+					{
+						printf("CURVE not find gpuBusId\n");
 					}
 				}
 			}
@@ -1535,6 +1627,7 @@ void ParseArgs(int argc, char *argv[])
 
 int main(int argc, char *argv[])
 {
+	//项目→属性→链接器→清单文件→UAC 执行级别→requireAdministrator(/ level = 'requireAdministrator') 重启Visual Studio即可。
 	if (argc > 1)
 	{
 		ParseInitArgs(argc, argv);
@@ -1577,6 +1670,7 @@ int main(int argc, char *argv[])
 			ParseArgs(argc, argv);
 
 		if (NvApi)
+
 			NvApiFree();
 
 		if (Adl)
